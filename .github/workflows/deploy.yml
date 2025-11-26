@@ -23,7 +23,7 @@ on:
 env:
   PRODUCT_NAME: pos
   PRODUCT_DISPLAY: "OSPOS Point of Sale"
-  DOCKER_IMAGE: "jekkos/opensourcepos:latest"
+  DOCKER_IMAGE: "jekkos/opensourcepos:master"
   PORT: "80"
   HEALTH_PATH: "/"
 
