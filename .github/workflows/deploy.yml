@@ -52,6 +52,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          target: ospos
           push: true
           tags: |
             ${{ steps.tags.outputs.full_image }}
