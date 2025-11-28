@@ -1,7 +1,7 @@
 FROM php:8.2-apache AS ospos
 LABEL maintainer="jekkos"
 
-RUN apt update && apt-get install -y libicu-dev libgd-dev libzip-dev git unzip default-mysql-client
+RUN apt update && apt-get install -y libicu-dev libgd-dev libzip-dev git unzip default-mysql-client nodejs npm
 RUN a2enmod rewrite
 RUN docker-php-ext-install mysqli bcmath intl gd zip pdo pdo_mysql
 RUN echo "date.timezone = \"\${PHP_TIMEZONE}\"" > /usr/local/etc/php/conf.d/timezone.ini
@@ -14,6 +14,9 @@ COPY . /app
 
 # Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
+
+# Install npm dependencies and build frontend assets
+RUN npm install && npm run build
 
 RUN ln -s /app/*[^public] /var/www && rm -rf /var/www/html && ln -nsf /app/public /var/www/html
 RUN chmod -R 770 /app/writable/uploads /app/writable/logs /app/writable/cache && chown -R www-data:www-data /app
