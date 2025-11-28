@@ -1,9 +1,9 @@
 FROM php:8.2-apache AS ospos
 LABEL maintainer="jekkos"
 
-RUN apt update && apt-get install -y libicu-dev libgd-dev libzip-dev git unzip
+RUN apt update && apt-get install -y libicu-dev libgd-dev libzip-dev git unzip default-mysql-client
 RUN a2enmod rewrite
-RUN docker-php-ext-install mysqli bcmath intl gd zip
+RUN docker-php-ext-install mysqli bcmath intl gd zip pdo pdo_mysql
 RUN echo "date.timezone = \"\${PHP_TIMEZONE}\"" > /usr/local/etc/php/conf.d/timezone.ini
 
 # Install composer
@@ -17,6 +17,12 @@ RUN composer install --no-dev --optimize-autoloader
 
 RUN ln -s /app/*[^public] /var/www && rm -rf /var/www/html && ln -nsf /app/public /var/www/html
 RUN chmod -R 770 /app/writable/uploads /app/writable/logs /app/writable/cache && chown -R www-data:www-data /app
+
+# Add Garfenter entrypoint for auto database initialization
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 FROM ospos AS ospos_test
 
