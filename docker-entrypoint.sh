@@ -17,7 +17,9 @@ wait_for_mysql() {
             \$pass = getenv('DB_PASS') ?: 'pointofsale';
             \$db = getenv('DB_NAME') ?: 'ospos';
             try {
-                \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass);
+                \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass, [
+                    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
+                ]);
                 exit(0);
             } catch (Exception \$e) {
                 exit(1);
@@ -45,25 +47,80 @@ init_database() {
     local pass="${DB_PASS:-pointofsale}"
     local db="${DB_NAME:-ospos}"
 
-    # Check if ospos_app_config table exists
-    if ! php -r "
+    # Check if ospos_app_config table exists using PHP
+    local tables_exist=$(php -r "
         \$host = '$host';
         \$user = '$user';
         \$pass = '$pass';
         \$db = '$db';
         try {
-            \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass);
+            \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass, [
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
+            ]);
             \$result = \$pdo->query(\"SHOW TABLES LIKE 'ospos_app_config'\");
-            exit(\$result->rowCount() > 0 ? 0 : 1);
+            echo \$result->rowCount() > 0 ? 'yes' : 'no';
         } catch (Exception \$e) {
-            exit(1);
+            echo 'no';
         }
-    " 2>/dev/null; then
-        echo "Initializing database with tables.sql..."
-        mysql -h "$host" -u "$user" -p"$pass" "$db" < /app/app/Database/tables.sql 2>/dev/null || true
+    " 2>/dev/null)
 
-        echo "Applying database constraints..."
-        mysql -h "$host" -u "$user" -p"$pass" "$db" < /app/app/Database/constraints.sql 2>/dev/null || true
+    if [ "$tables_exist" = "no" ]; then
+        echo "Initializing database with tables.sql..."
+
+        # Execute tables.sql using PHP/PDO
+        php -r "
+            \$host = '$host';
+            \$user = '$user';
+            \$pass = '$pass';
+            \$db = '$db';
+            try {
+                \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass, [
+                    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
+                ]);
+                \$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+                // Read and execute tables.sql
+                \$sql = file_get_contents('/app/app/Database/tables.sql');
+                // Split by semicolons but handle multi-line INSERT statements
+                \$statements = preg_split('/;[\r\n]+/', \$sql);
+                foreach (\$statements as \$stmt) {
+                    \$stmt = trim(\$stmt);
+                    if (!empty(\$stmt) && \$stmt !== '--') {
+                        try {
+                            \$pdo->exec(\$stmt);
+                        } catch (Exception \$e) {
+                            // Ignore duplicate key errors for INSERT statements
+                            if (strpos(\$e->getMessage(), 'Duplicate') === false) {
+                                echo 'Warning: ' . \$e->getMessage() . \"\\n\";
+                            }
+                        }
+                    }
+                }
+                echo \"Tables created successfully!\\n\";
+
+                // Read and execute constraints.sql
+                \$sql = file_get_contents('/app/app/Database/constraints.sql');
+                \$statements = preg_split('/;[\r\n]+/', \$sql);
+                foreach (\$statements as \$stmt) {
+                    \$stmt = trim(\$stmt);
+                    if (!empty(\$stmt) && \$stmt !== '--') {
+                        try {
+                            \$pdo->exec(\$stmt);
+                        } catch (Exception \$e) {
+                            // Ignore constraint errors (may already exist)
+                            if (strpos(\$e->getMessage(), 'Duplicate') === false &&
+                                strpos(\$e->getMessage(), 'already exists') === false) {
+                                echo 'Warning: ' . \$e->getMessage() . \"\\n\";
+                            }
+                        }
+                    }
+                }
+                echo \"Constraints applied successfully!\\n\";
+            } catch (Exception \$e) {
+                echo 'Error initializing database: ' . \$e->getMessage() . \"\\n\";
+                exit(1);
+            }
+        " 2>&1
 
         echo "Database initialized successfully!"
     else
@@ -80,23 +137,32 @@ update_admin_password() {
     local pass="${DB_PASS:-pointofsale}"
     local db="${DB_NAME:-ospos}"
 
-    # Generate bcrypt hash for GarfenterAdmin2024
-    local new_password_hash=$(php -r "echo password_hash('GarfenterAdmin2024', PASSWORD_DEFAULT);")
-
     php -r "
         \$host = '$host';
         \$user = '$user';
         \$pass = '$pass';
         \$db = '$db';
         try {
-            \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass);
+            \$pdo = new PDO(\"mysql:host=\$host;dbname=\$db\", \$user, \$pass, [
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
+            ]);
+            \$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // Generate bcrypt hash for GarfenterAdmin2024
+            \$newPasswordHash = password_hash('GarfenterAdmin2024', PASSWORD_DEFAULT);
+
             \$stmt = \$pdo->prepare(\"UPDATE ospos_employees SET password = ? WHERE username = 'admin'\");
-            \$stmt->execute(['$new_password_hash']);
-            echo \"Admin password updated successfully!\n\";
+            \$stmt->execute([\$newPasswordHash]);
+
+            if (\$stmt->rowCount() > 0) {
+                echo \"Admin password updated to GarfenterAdmin2024\\n\";
+            } else {
+                echo \"Admin user not found or password already set\\n\";
+            }
         } catch (Exception \$e) {
-            echo \"Warning: Could not update admin password: \" . \$e->getMessage() . \"\n\";
+            echo 'Warning: Could not update admin password: ' . \$e->getMessage() . \"\\n\";
         }
-    " 2>/dev/null || true
+    " 2>&1
 }
 
 # Main entrypoint
