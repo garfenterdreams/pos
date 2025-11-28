@@ -130,10 +130,11 @@ class Database extends Config
         }
 
         foreach ([&$this->development, &$this->tests, &$this->default] as &$config) {
-            $config['hostname'] = !getenv('MYSQL_HOST_NAME') ? $config['hostname'] : getenv('MYSQL_HOST_NAME');
-            $config['username'] = !getenv('MYSQL_USERNAME') ? $config['username'] : getenv('MYSQL_USERNAME');
-            $config['password'] = !getenv('MYSQL_PASSWORD') ? $config['password'] : getenv('MYSQL_PASSWORD');
-            $config['database'] = !getenv('MYSQL_DB_NAME') ? $config['database'] : getenv('MYSQL_DB_NAME');
+            // Support both MYSQL_* and DB_* env var naming conventions (Garfenter Cloud uses DB_*)
+            $config['hostname'] = getenv('DB_HOST') ?: getenv('MYSQL_HOST_NAME') ?: $config['hostname'];
+            $config['username'] = getenv('DB_USER') ?: getenv('MYSQL_USERNAME') ?: $config['username'];
+            $config['password'] = getenv('DB_PASS') ?: getenv('MYSQL_PASSWORD') ?: $config['password'];
+            $config['database'] = getenv('DB_NAME') ?: getenv('MYSQL_DB_NAME') ?: $config['database'];
         }
     }
 }
