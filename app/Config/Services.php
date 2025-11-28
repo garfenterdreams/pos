@@ -7,6 +7,7 @@ use CodeIgniter\HTTP\IncomingRequest;
 use Config\Services as AppServices;
 use HTMLPurifier;
 use HTMLPurifier_Config;
+use Locale;
 
 /**
  * Services Configuration file.
